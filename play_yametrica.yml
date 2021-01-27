@@ -1,0 +1,12 @@
+---
+- name: INSTALL YAMetrica AND APPMetrica
+  hosts: yahosts
+  become: true
+
+  roles:
+    - yametrica
+    
+     
+
+    
+    

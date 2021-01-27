@@ -1,0 +1,165 @@
+---
+# tasks file for yametrica
+    - name: INSTALL NEEDED TOOLS
+      yum:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      with_items:
+        - git
+        - python2-pip
+
+    - name: INSTALL PIP requests
+      pip:
+         name: "{{ item }}"
+      with_items:
+        - requests
+        - docker-py
+
+    - name: CHECK DOCKER INSTALLED
+      shell: find_dkr=$(docker --version 2>/dev/null); if [ -n "$find_dkr" ]; then echo "is"; else echo "not"; fi;
+      register: is_dkr
+
+    - name: CHECK DOCKER-COMPOSE INSTALLED
+      shell: find_dkrc=$(docker-compose --version 2>/dev/null); if [ -n "$find_dkrc" ]; then echo "is"; else echo "not"; fi;
+      register: is_dkrc
+
+    - block:
+       - name: INSTALL yum-utils
+         yum:
+          name: "{{ item }}"
+          state: present
+          update_cache: yes
+         with_items:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+
+       - name: Add Docker repo
+         get_url:
+           url: https://download.docker.com/linux/centos/docker-ce.repo
+           dest: /etc/yum.repos.d/docer-ce.repo
+
+       - name: INSTALL DOCKER
+         dnf:
+          name: "{{ item }}"
+          state: latest
+         with_items:
+           - containerd.io
+           - docker-ce
+           - docker-ce-cli
+      when: is_dkr.stdout == "not"
+
+    - block:
+       - name: INSTALL DOCKER-COMPOSE
+         shell: "{{ item }}"
+         with_items:
+          - curl -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/doc$
+          - chmod +x /usr/local/bin/docker-compose
+          - ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+      when: is_dkrc.stdout == "not"
+
+    - name: CREATE /root/logs_api_integration_* DIRS
+      file: 
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+      with_items:
+        - /root/logs_api_integration_list
+        - /root/logs_api_integration_rv
+
+    - name: PULL LOGS API SCRIPTS FOR YAMetrica LIST AND YAMetrica RutubeVideometrics
+      git:
+        repo: https://github.com/yndx-metrika/logs_api_integration.git
+        dest: "{{ item }}"
+        force: yes
+      with_items:
+        - /root/logs_api_integration_list
+        - /root/logs_api_integration_rv
+      tags: update
+
+    - name: COPY config_list.json.j2 template INTO /root/logs_api_integration_list/configs/
+      template: src=config_list.json.j2 dest=/root/logs_api_integration_list/configs/config.json mode=0775 backup=yes
+      tags: update
+
+    - name: COPY config_rv.json.j2 template INTO /root/logs_api_integration_rv/configs/
+      template: src=config_rv.json.j2 dest=/root/logs_api_integration_rv/configs/config.json mode=0775 backup=yes
+      tags: update
+
+    - name: SETUP CRON FOR LIST HITS
+      cron:
+        name: HITS LIST counterID=53182297 loading
+        minute: "30"
+        hour: "5"
+        user: root
+        job: cd /root/logs_api_integration_list && /usr/bin/python2 metrica_logs_api.py -mode regular_early -source hits > /tmp/metrica_hits_logs_api.log 2>&1
+
+    - name: SETUP CRON FOR RV HITS
+      cron:
+        name: HITS Rutube videometrics counterID=39751470 loading
+        minute: "30"
+        hour: "6"
+        user: root
+        job: cd /root/logs_api_integration_rv && /usr/bin/python2 metrica_logs_api.py -mode regular_early -source hits > /tmp/metrica_hits_rv_logs_api.log 2>&1
+
+    - name: SETUP CRON FOR RV VISITS
+      cron:
+        name: VISIITS Rutube videometrics counterID=39751470 loading
+        minute: "30"
+        hour: "7"
+        user: root
+        job: cd /root/logs_api_integration_rv && /usr/bin/python2 metrica_logs_api.py -mode regular_early -source visits > /tmp/metrica_visits_rv_logs_api.log 2>&1
+
+    - name: SETUP CRON FOR LIST VISITS
+      cron:
+        name: VISITS LIST counterID=53182297 loading
+        minute: "30"
+        hour: "8"
+        user: root
+        job: cd /root/logs_api_integration_list && /usr/bin/python2 metrica_logs_api.py -mode regular_early -source visits > /tmp/metrica_visits_logs_api.log 2>&1
+
+    - name: MAKE DOCKER START
+      service: name=docker state=restarted enabled=yes
+
+    - name: RUN CH container for APPMetrica
+      docker_container:
+        name: clickhouse
+        image: yandex/clickhouse-server
+        state: started
+        restart_policy: always
+
+    - name: RUN appmetrica-logsapi-loader FOR APPLE AND ANDROID apps
+      docker_container:
+        name: appmetrica-logsapi-loader-app
+        image: yandex/appmetrica-logsapi-loader
+        state: started
+        links: clickhouse
+        env:
+          CH_HOST: "http://{{ appmetrica_ch_host }}:8123"
+          CH_USER: "{{ appmetrica_ch_user }}"
+          CH_PASSWORD: "{{ appmetrica_ch_password }}"
+          CH_DATABASE: "{{ appmetrica_ch_db }}"
+          TOKEN: "{{ yametrica_token }}"
+          APP_IDS: '["1013814","1164705"]'
+          FRESH_LIMIT: "2"
+          UPDATE_INTERVAL: "5"
+          UPDATE_LIMIT: "10"
+
+    - name: RUN appmetrica-logsapi-loader FOR HUAWAI AND ANDROIDTV apps
+      docker_container:
+        name: appmetrica-logsapi-loader-app-hu
+        image: yandex/appmetrica-logsapi-loader
+        state: started
+        links: clickhouse
+        env:
+          CH_HOST: "http://{{ appmetrica_ch_host }}:8123"
+          CH_USER: "{{ appmetrica_ch_user }}"
+          CH_PASSWORD: "{{ appmetrica_ch_password }}"
+          CH_DATABASE: "{{ appmetrica_ch_db }}"
+          TOKEN: "{{ appmetrica_token }}"
+          APP_IDS: '["3242917","3288610"]'
+          FRESH_LIMIT: "2"
+          UPDATE_INTERVAL: "5"
+          UPDATE_LIMIT: "10"
+
+    
