@@ -76,15 +76,15 @@
       with_items:
         - /root/logs_api_integration_list
         - /root/logs_api_integration_rv
-      tags: update
+      tags: update_script
 
     - name: COPY config_list.json.j2 template INTO /root/logs_api_integration_list/configs/
       template: src=config_list.json.j2 dest=/root/logs_api_integration_list/configs/config.json mode=0775 backup=yes
-      tags: update
+      tags: update_script
 
     - name: COPY config_rv.json.j2 template INTO /root/logs_api_integration_rv/configs/
       template: src=config_rv.json.j2 dest=/root/logs_api_integration_rv/configs/config.json mode=0775 backup=yes
-      tags: update
+      tags: update_script
 
     - name: SETUP CRON FOR LIST HITS
       cron:
@@ -127,6 +127,7 @@
         image: yandex/clickhouse-server
         state: started
         restart_policy: always
+      tags: start_containers
 
     - name: RUN appmetrica-logsapi-loader FOR APPLE AND ANDROID apps
       docker_container:
@@ -144,6 +145,7 @@
           FRESH_LIMIT: "2"
           UPDATE_INTERVAL: "5"
           UPDATE_LIMIT: "10"
+      tags: start_containers
 
     - name: RUN appmetrica-logsapi-loader FOR HUAWAI AND ANDROIDTV apps
       docker_container:
@@ -161,5 +163,6 @@
           FRESH_LIMIT: "2"
           UPDATE_INTERVAL: "5"
           UPDATE_LIMIT: "10"
+      tags: start_containers
 
     
