@@ -1,6 +1,6 @@
 ---
 - name: INSTALL YAMetrica AND APPMetrica
-  hosts: yahosts
+  hosts: yastat
   become: true
 
   roles:
